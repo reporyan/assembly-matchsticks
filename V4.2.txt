@@ -1,0 +1,219 @@
+//STAGE 4
+//
+//R4 = output
+//R5 = input
+//R6 = sticks
+//R7 = start sticks (for restart)
+//R8 = screen
+//
+//ask for name
+      MOV R4, #namemsg
+      STR R4, .WriteString
+      MOV R5, #inputname
+      STR R5, .ReadString
+//get starting sticks input
+InputStartSticks:
+      MOV R4, #totalstickmsg
+      STR R4, .WriteString
+      MOV R7, #inputsticks
+      LDR R7, .InputNum //write to starting sticks
+      MOV R6, R7        //read from starting sticks
+//compare 10 - 100
+      CMP R6, #10
+      BLT InputStartSticks
+      CMP R6, #100
+      BGT InputStartSticks
+//display p1 name
+StartGame:
+      MOV R6, R7        //reset sticks from start sticks
+      BL UpdateDisplay  //show stick graphics
+//player setup message
+      MOV R4, #p1ismsg
+      STR R4, .WriteString
+      MOV R4, #inputname
+      STR R4, .WriteString
+//sticks setup message
+      MOV R4, #sticksmsg
+      STR R4, .WriteString
+      STR R6, .WriteSignedNum
+//player's turn, output game info
+P1Turn:
+      MOV R4, #promptmsg1 
+      STR R4, .WriteString
+      MOV R4, #inputname
+      STR R4, .WriteString
+      MOV R4, #promptmsg2
+      STR R4, .WriteString
+      STR R6, .WriteSignedNum
+      MOV R4, #promptmsg3
+      STR R4, .WriteString
+//output prompt
+InputTake:
+      MOV R4, #promptmsg1
+      STR R4, .WriteString
+      MOV R4, #inputname
+      STR R4, .WriteString
+      MOV R4, #promptmsg4
+      STR R4, .WriteString
+//get take input
+      MOV R5, #inputtake
+      LDR R5, .InputNum
+      CMP R5, #1
+      BLT InputTake
+      CMP R5, #7
+      BGT InputTake
+      CMP R5, R6
+      BGT InputTake
+//subtract from sticks
+      SUB R6, R6, R5
+      BL UpdateDisplay
+//determine result
+      CMP R6, #1
+      BGT P2Turn
+      BEQ Win
+      BLT Draw
+      B Win
+//computer's turn
+P2Turn:
+      MOV R4, #computermsg
+      STR R4, .WriteString
+P2Retry:                //start here if choice is invalid
+      LDR R5, .Random
+      AND R5, R5, #0b111 //bitwise random less than 8
+      CMP R5, #0        //retry if = 0
+      BEQ P2Retry
+      CMP R5, R6        //retry if taking more than remains
+      BGT P2Retry
+      MOV R0, #1
+      BL Delay          //delay to emphasise computer is doing something and it isn't just a result of your input
+      STR R5, .WriteSignedNum //output computers move
+      SUB R6, R6, R5
+      BL UpdateDisplay
+//determine result
+      CMP R6, #1
+      BGT P1Turn
+      BEQ Loss
+      BLT Draw
+      B Win
+//win, output message and ask for restart
+Win:
+      MOV R4, #promptmsg1
+      STR R4, .WriteString
+      MOV R4, #inputname
+      STR R4, .WriteString
+      MOV R4, #winmsg
+      STR R4, .WriteString
+      B InputRestart
+//loss, output message and ask for restart
+Loss:
+      MOV R4, #promptmsg1
+      STR R4, .WriteString
+      MOV R4, #inputname
+      STR R4, .WriteString
+      MOV R4, #lossmsg
+      STR R4, .WriteString
+      B InputRestart
+//draw (as in "tie"), output message and ask for restart
+Draw:
+      MOV R4, #drawmsg
+      STR R4, .WriteString
+      B InputRestart
+InputRestart:
+//write message
+      MOV R4, #restartmsg
+      STR R4, .WriteString
+//read choice
+      MOV R5, #inputrestart
+      STR R5, .ReadString
+//use R4 again for address of choice
+      MOV R4, #inputrestart
+      LDRB R5, [R4]     //load R5 with first byte of data stored in address stored in R4
+      CMP R5, #121
+      BEQ StartGame
+      CMP R5, #110
+      BEQ BranchHalt
+      B InputRestart
+BranchHalt:
+      HALT
+//
+//functions
+//
+UpdateDisplay:
+      PUSH {lr}
+      MOV R8, #.PixelScreen
+      STR R8, .ClearScreen
+      MOV R0, R6        //parameter
+      MOV R1, #0xFF0000 //colour paremeter
+      BL DrawMatchsticks
+      POP {lr}
+      MOV pc, lr
+//DrawMatchsticks, R0 matchstick count, R1 colour, R2 current count, R3 xNum
+DrawMatchsticks:
+      PUSH {lr}
+      MOV R8, #.PixelScreen //MOV again because R8 could be modified
+      MOV R2, #0
+      MOV R3, #0
+DrawMatchsticksLoop:
+      STR R1, [R8 + #520] //offset for border
+      ADD R8, R8, #4
+      STR R1, [R8 + #520]
+      ADD R8, R8, #4
+      STR R1, [R8 + #520]
+      ADD R8, R8, #4
+      STR R1, [R8 + #520]
+      ADD R8, R8, #16
+      ADD R2, R2, #1
+      ADD R3, R3, #1
+//colour shift
+      SUB R1, R1, #0x020000
+      ADD R1, R1, #0x000002 
+//new line
+      BL LineOverflow
+//return if reaches count
+      CMP R2, R0
+      BLT DrawMatchsticksLoop
+      POP {lr}
+      MOV pc, lr
+LineOverflow:
+      PUSH {lr}
+      CMP R3, #8        //if the line has reached X sticks long
+      BGT NewMatchstickLine
+      POP {lr}
+      MOV pc, lr
+NewMatchstickLine:      //called from LineOverflow
+      MOV R3, #0
+      ADD R8, R8, #516  //new line on screen, more than 256 as the line stops before the edge of the screen
+      POP {lr}
+      MOV pc, lr
+//Delay function, R0 delayTime, R1 start time, R2 tick time, R3 difference
+//I believe this is just an int, so it's possible it can delay for less than the required time... :(
+Delay: 
+      LDR R1, .Time
+Tick:
+      LDR R2, .Time
+      SUB R3, R2, R1
+      CMP R3, R0
+      BLT Tick          //repeat if it hasn't reached limit yet
+      MOV pc, lr
+//
+//I/O
+//
+//outputs
+namemsg: .ASCIZ "Please Enter Your Name:"
+totalstickmsg: .ASCIZ "\nHow Many Matchsticks? (10 - 100):"
+p1ismsg: .ASCIZ "\nPlayer 1 is: "
+sticksmsg: .ASCIZ "\nMatchsticks: "
+promptmsg1: .ASCIZ "\nPlayer "
+promptmsg2: .ASCIZ ", "
+promptmsg3: .ASCIZ "matchsticks remain."
+promptmsg4: .ASCIZ ", take matchsticks? (1 - 7):"
+computermsg: .ASCIZ "\nComputer Taking... "
+winmsg: .ASCIZ ", you WIN!"
+lossmsg: .ASCIZ ", you LOSE!"
+drawmsg: .ASCIZ "\nIt's a DRAW!"
+restartmsg: .ASCIZ "\nPlay Again? (y/n):"
+//inputs
+inputname: .BLOCK 128
+inputsticks: .BLOCK 128
+inputtake: .BLOCK 128
+inputrestart: .BLOCK 128
