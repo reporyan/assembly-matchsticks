@@ -1,5 +1,5 @@
 # Assembly Matchsticks
-Developed for Computer Systems unit<br>
+Developed for the Computer Systems unit<br>
 Matchsticks game using ARM lite assembly<br>
 
 ![Uploading image.png…]()
